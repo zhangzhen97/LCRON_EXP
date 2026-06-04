@@ -116,7 +116,7 @@ faiss-gpu=1.7.1
 If you find this project helpful for your research, please cite our paper:
 
 ```
-@article{DBLP:journals/corr/abs-2503-09492,
+@inproceedings{DBLP:conf/icml/WangZWYL0W0G25,
   author       = {Yunli Wang and
                   Zhen Zhang and
                   Zhiqiang Wang and
@@ -126,16 +126,23 @@ If you find this project helpful for your research, please cite our paper:
                   Shiyang Wen and
                   Peng Jiang and
                   Kun Gai},
+  editor       = {Aarti Singh and
+                  Maryam Fazel and
+                  Daniel Hsu and
+                  Simon Lacoste{-}Julien and
+                  Felix Berkenkamp and
+                  Tegan Maharaj and
+                  Kiri Wagstaff and
+                  Jerry Zhu},
   title        = {Learning Cascade Ranking as One Network},
-  journal      = {CoRR},
-  volume       = {abs/2503.09492},
+  booktitle    = {Forty-second International Conference on Machine Learning, {ICML}
+                  2025, Vancouver, BC, Canada, July 13-19, 2025},
+  series       = {Proceedings of Machine Learning Research},
+  publisher    = {{PMLR} / OpenReview.net},
   year         = {2025},
-  url          = {https://doi.org/10.48550/arXiv.2503.09492},
-  doi          = {10.48550/ARXIV.2503.09492},
-  eprinttype    = {arXiv},
-  eprint       = {2503.09492},
-  timestamp    = {Mon, 14 Apr 2025 08:08:45 +0200},
-  biburl       = {https://dblp.org/rec/journals/corr/abs-2503-09492.bib},
+  url          = {https://proceedings.mlr.press/v267/wang25fc.html},
+  timestamp    = {Wed, 04 Feb 2026 17:22:45 +0100},
+  biburl       = {https://dblp.org/rec/conf/icml/WangZWYL0W0G25.bib},
   bibsource    = {dblp computer science bibliography, https://dblp.org}
 }
 ```
