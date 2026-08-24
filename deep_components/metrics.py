@@ -317,14 +317,14 @@ def evaluate(model, data_loader, device, is_debug=False, desc=""):
       if is_debug and iter < 5:
           print("mask_concat=%s,%s"%(mask_concat.shape, mask_concat))
 
-      if iter < 5:
+      if is_debug and iter < 5:
           print("PRE_SHUFFLE. logits_concat=%s, rank_index_concat=%s masks=%s" % (logits_concat[0], rank_index_concat[0], mask_concat[0]))
 
       [logits_concat, rank_index_concat, mask_concat] = shuffle_last_dim(
           [logits_concat, rank_index_concat,mask_concat])
       ndcg = calc_ndcg_sklearn(logits_concat, rank_index_concat, k=top_k)
       recall,set_recall = calc_set_recall(logits_concat, rank_index_concat, topk=top_k, support_m=support_m, mask=mask_concat)
-      if iter < 5:
+      if is_debug and iter < 5:
           print("AFT_SHUFFLE[%s] logits=%s rank_index=%s mask=%s, topk=%s m=%s recall=%s"%(
               desc, logits_concat[0], rank_index_concat[0], mask_concat[0], top_k, support_m, set_recall[0]))
       kdt = calc_kdt_mask(logits_concat, rank_index_concat, mask_concat)
