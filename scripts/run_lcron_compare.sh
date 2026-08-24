@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Run reproducible two-stage LCRON comparisons on the development machine.
+# Run two-stage LCRON comparisons with fixed data/model hyperparameters on the development machine.
 # Arguments: [variant] [root_path]
 # Variants: baseline, no_down, no_detach, all (default: all)
 
