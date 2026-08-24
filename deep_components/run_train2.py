@@ -78,6 +78,10 @@ def parse_args():
     parser.add_argument('--lcron_detach_permutation_matrix', type=int, choices=[0, 1], default=1,
                         help='whether LCRON detaches permutation-matrix normalization denominators (1=on, 0=off).')
     parser.add_argument('--seed', type=int, default=1024, help='random seed for model/data initialization.')
+    parser.add_argument('--num_workers', type=int, default=2,
+                        help='number of DataLoader workers (0 disables prefetching).')
+    parser.add_argument('--track_memory', action='store_true',
+                        help='print CUDA memory statistics during training.')
 
     return parser.parse_args()
 
@@ -196,7 +200,8 @@ if __name__ == '__main__':
         else:
             loss_optimizer = None
 
-        num_workers,rank_offset = 1,0
+        num_workers, rank_offset = max(0, args.num_workers), 0
+        pin_memory = torch.cuda.is_available()
         # train each model with just one epoch. epcoh is used to check the variance of metrics.
         for epoch in [args.epochs]:
             if args.epochs > 1:
@@ -212,20 +217,31 @@ if __name__ == '__main__':
                     path_to_train_request_pkl_lst[n_day],
                     rank_offset=rank_offset
                 )
-                train_loader = DataLoader(
+                loader_kwargs = dict(
                     dataset=train_dataset,
                     batch_size=args.batch_size,
                     shuffle=True,
                     num_workers=num_workers,
-                    drop_last=True
+                    drop_last=True,
+                    pin_memory=pin_memory,
                 )
+                if num_workers > 0:
+                    loader_kwargs.update(persistent_workers=True, prefetch_factor=2)
+                train_loader = DataLoader(**loader_kwargs)
 
                 print("{def} args.loss_type=%s" % args.loss_type)
                 for iter_step, inputs in enumerate(train_loader):
-                    inputs_LongTensor = [torch.LongTensor(inp.numpy()).to(device) for inp in inputs[:15]]
+                    # DataLoader already returns tensors. Avoid the former
+                    # Tensor -> NumPy -> Tensor round-trip and move the full
+                    # batch once so the loss code does not copy masks/ranks
+                    # repeatedly.
+                    inputs_device = [
+                        inp.to(device, non_blocking=pin_memory) for inp in inputs
+                    ]
+                    inputs_LongTensor = [inp.long() for inp in inputs_device[:15]]
                     prerank_logits_list = prerank_model.forward_all_by_rank(inputs_LongTensor)
                     retrival_logits_list = retrival_model.forward_all_by_rank(inputs_LongTensor)
-                    if iter_step % 100 == 0:
+                    if args.track_memory and iter_step % 100 == 0:
                         track_memory("BACKWARD_MEM")
                     if args.loss_type == "fs_ranknet": # RankNet
                         if iter_step == 1:
@@ -348,7 +364,7 @@ if __name__ == '__main__':
                         else:
                             version = 'v0'
                         joint_loss_conf.version = version
-                        outputs = compute_lcron_metrics(inputs, prerank_logits_list, retrival_logits_list, device,
+                        outputs = compute_lcron_metrics(inputs_device, prerank_logits_list, retrival_logits_list, device,
                                                         max_num=max_num,
                                                         joint_loss_conf=joint_loss_conf,
                                                         logger=logger,

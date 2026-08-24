@@ -14,6 +14,9 @@ files=(
   deep_components/loss/three_stage/lcron.py
   deep_components/run_train2.py
   deep_components/run_train3.py
+  deep_components/metrics.py
+  deep_components/run_test2.py
+  deep_components/collect_metrics.py
   two_stage/run_x2.sh
   three_stage/run_x3.sh
   scripts/run_lcron_compare.sh

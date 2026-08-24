@@ -3,7 +3,7 @@
 # Run two-stage LCRON comparisons with fixed data/model hyperparameters on the development machine.
 # Arguments: [variant] [root_path]
 # Variants: baseline, no_down, no_detach, all (default: all)
-# Default seeds: 1024 2024 3407; override with LCRON_EXP_SEEDS="...".
+# Default seeds: five independent runs, matching the paper; override with LCRON_EXP_SEEDS="...".
 
 set -euo pipefail
 
@@ -14,8 +14,17 @@ tau="${LCRON_EXP_TAU:-50}"
 epochs="${LCRON_EXP_EPOCHS:-30}"
 lr="${LCRON_EXP_LR:-1e-2}"
 batch_size="${LCRON_EXP_BATCH_SIZE:-1024}"
-seeds="${LCRON_EXP_SEEDS:-1024 2024 3407}"
+seeds="${LCRON_EXP_SEEDS:-1024 2024 3407 4099 5113}"
+if [ -n "${LCRON_EXP_PYTHON:-}" ]; then
+  python_bin="${LCRON_EXP_PYTHON}"
+elif [ -x /share/ad/zq3/lcron/python3_7/bin/python ]; then
+  python_bin="/share/ad/zq3/lcron/python3_7/bin/python"
+else
+  python_bin="python3"
+fi
+export LCRON_PYTHON="${python_bin}"
 export PYTHONPATH="${PWD}:${PWD}/deep_components${PYTHONPATH:+:${PYTHONPATH}}"
+echo "[LCRON] python=${python_bin}"
 
 run_variant() {
   local name="$1"
@@ -34,7 +43,7 @@ run_variant() {
 
   echo "[LCRON] ${name}: evaluating"
   CUDA_VISIBLE_DEVICES="${cuda}" \
-    python3 -B -u deep_components/run_test2.py \
+    "${python_bin}" -B -u deep_components/run_test2.py \
       --epochs="${epochs}" --loss_type=lcron --tau="${tau}" \
       --batch_size="${batch_size}" --infer_realshow_batch_size="${batch_size}" \
       --infer_recall_batch_size="${batch_size}" --emb_dim=8 --lr="${lr}" \

@@ -34,7 +34,8 @@ def get_set_value_by_permutation_matrix_and_label(permutation_matrix, label, top
     return torch.mean(set_value_sample_wise)
 
 
-def compute_lcron_metrics(inputs, prerank_logits, retrival_logits, device, loss_model, max_num, joint_loss_conf, logger, tau=50, sort="neural_sort"):
+def compute_lcron_metrics(inputs, prerank_logits, retrival_logits, device, loss_model, max_num,
+                          joint_loss_conf, logger, tau=50, sort="neural_sort", debug=False):
     rank_index_list = [tensor.to(device) for tensor in inputs[-4:]]
     mask_list = [tensor.to(device) for tensor in inputs[-8:-4]]
 
@@ -92,15 +93,18 @@ def compute_lcron_metrics(inputs, prerank_logits, retrival_logits, device, loss_
                           use_name_as_scope=True,
                           device=device,
                           loss_model=loss_model,
-                          is_debug=True,
+                          is_debug=debug,
                           is_train=True)
 
     total_loss = loss_instance.get_loss('joint/cascade_model')
 
-    print("DEBUG_LCRON_LOSS. l_relax_recall=%s\tl_relax_prerank=%s\tl_joint=%s" % (
-        loss_instance.get_loss('l_relax_recall').detach().cpu().numpy(),
-        loss_instance.get_loss('l_relax_prerank').detach().cpu().numpy(),
-        loss_instance.get_loss('l_joint').detach().cpu().numpy()))
+    if debug:
+        # Read cached values from the single loss-graph evaluation above.
+        # Calling get_loss() here would rebuild the complete graph again.
+        print("DEBUG_LCRON_LOSS. l_relax_recall=%s\tl_relax_prerank=%s\tl_joint=%s" % (
+            loss_instance.loss_output_dict['l_relax_recall'].detach().item(),
+            loss_instance.loss_output_dict['l_relax_prerank'].detach().item(),
+            loss_instance.loss_output_dict['l_joint'].detach().item()))
 
     outputs = {"total_loss": total_loss}
     return outputs
@@ -274,5 +278,4 @@ class LcronLossModel(torch.nn.Module):
                      (0.5 / torch.square(self.recall_weight)) * l_relax_recall + \
                     l_joint + \
                     torch.log(self.prerank_weight*self.recall_weight)
-        print("DEBUG_LcronLossModel[prerank_weight=%s, recall_weight=%s]" % (self.prerank_weight, self.recall_weight))
         return final_loss

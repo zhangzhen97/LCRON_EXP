@@ -158,8 +158,15 @@ if __name__ == '__main__':
                 num_workers=0,
                 drop_last=True
             )
-            evaluate_join(prerank_model, retrival_model, loader, device, desc="%s\t%s" % (args.loss_type, "joint"))
+            joint_metrics = evaluate_join(
+                prerank_model,
+                retrival_model,
+                loader,
+                device,
+                desc="%s\t%s" % (args.loss_type, "joint"),
+            )
 
+            stage_metrics = {}
             for model, name in [[prerank_model, "prerank"], [retrival_model, "retrival"]]:
                 dataset = Rank_Train_All_BY_RANK_Dataset(
                     path_to_eval_csv_lst[n_day],
@@ -174,6 +181,32 @@ if __name__ == '__main__':
                     num_workers=0,
                     drop_last=True
                 )
-                evaluate(model, loader, device, is_debug=False, desc="%s\t%s"%(args.loss_type, name))
+                stage_metrics[name] = evaluate(
+                    model,
+                    loader,
+                    device,
+                    is_debug=False,
+                    desc="%s\t%s" % (args.loss_type, name),
+                )
+
+            # Keep a machine-readable row with exactly the five metrics used in
+            # the LCRON paper's two-stage tables.
+            paper_header = (
+                "paper_metrics\t%s\tJoint/Recall@10@20\t"
+                "Ranking/Recall@10@20\tRanking/NDCG@10\t"
+                "Retrieval/Recall@10@30\tRetrieval/NDCG@10"
+            ) % args.loss_type
+            paper_values = (
+                "paper_metrics\t%s\t%.10f\t%.10f\t%.10f\t%.10f\t%.10f"
+            ) % (
+                args.loss_type,
+                joint_metrics["joint_recall"],
+                stage_metrics["prerank"]["recall"],
+                stage_metrics["prerank"]["ndcg"],
+                stage_metrics["retrival"]["recall"],
+                stage_metrics["retrival"]["ndcg"],
+            )
+            print(paper_header)
+            print(paper_values)
 
     run_eval()

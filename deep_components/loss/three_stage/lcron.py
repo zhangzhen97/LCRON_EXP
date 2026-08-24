@@ -157,7 +157,6 @@ class LcronLossModel(torch.nn.Module):
                      (0.5 / torch.square(self.recall_weight)) * l_relax_recall + \
                     l_joint + \
                     torch.log(self.rank_weight*self.prerank_weight*self.recall_weight)
-        print("DEBUG_LcronLossModel[rank_weight=%s, prerank_weight=%s, recall_weight=%s]" % (self.rank_weight, self.prerank_weight, self.recall_weight))
         return final_loss
 
 class LCRON(LossHelperBase):
@@ -228,7 +227,7 @@ class LCRON(LossHelperBase):
 
 
 def compute_lcron_loss(inputs, rank_logits, prerank_logits, retrival_logits, device, loss_model, version,
-                       use_down_loss=True, detach_permutation_matrix=True):
+                       use_down_loss=True, detach_permutation_matrix=True, debug=False):
     rank_index_list = [tensor.to(device) for tensor in inputs[-5:]]
     mask_list = [tensor.to(device) for tensor in inputs[-10:-5]]
     tau = 50
@@ -294,15 +293,16 @@ def compute_lcron_loss(inputs, rank_logits, prerank_logits, retrival_logits, dev
                           use_name_as_scope=True,
                           device=device,
                           loss_model=loss_model,
-                          is_debug=True,
+                          is_debug=debug,
                           is_train=True)
     total_loss = loss_instance.get_loss('joint/cascade_model')
 
-    print("DEBUG_LCRON_LOSS. l_relax_recall=%s\tl_relax_prerank=%s\tl_relax_prerank=%s\tl_joint=%s" % (
-        loss_instance.get_loss('l_relax_recall').detach().cpu().numpy(),
-        loss_instance.get_loss('l_relax_prerank').detach().cpu().numpy(),
-        loss_instance.get_loss('l_relax_rank').detach().cpu().numpy(),
-        loss_instance.get_loss('l_joint').detach().cpu().numpy()))
+    if debug:
+        print("DEBUG_LCRON_LOSS. l_relax_recall=%s\tl_relax_prerank=%s\tl_relax_rank=%s\tl_joint=%s" % (
+            loss_instance.loss_output_dict['l_relax_recall'].detach().item(),
+            loss_instance.loss_output_dict['l_relax_prerank'].detach().item(),
+            loss_instance.loss_output_dict['l_relax_rank'].detach().item(),
+            loss_instance.loss_output_dict['l_joint'].detach().item()))
 
     outputs = {"total_loss": total_loss}
     return outputs

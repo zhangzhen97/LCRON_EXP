@@ -1,5 +1,6 @@
 loss_type=$2
 cuda=$3
+python_bin="${LCRON_PYTHON:-python}"
 if [ -n "$4" ]; then
     tau=$4
 else
@@ -61,7 +62,7 @@ for epoch in $epochs; do
   TEST_PATH="${root_path}/logs/TEST_bs-${BS}_lr-${lr}_tau${tau}_${tag}_E${epoch}_S3.log"
 
   if [[ "$1" == "all" || "$1" == "train" ]]; then
-    python -B -u deep_components/run_train3.py \
+    "${python_bin}" -B -u deep_components/run_train3.py \
     --epochs=${epoch} \
     --loss_type=${loss_type} \
     --tau="${tau}" \
@@ -82,7 +83,7 @@ for epoch in $epochs; do
 
   if [[ "$1" == "all" || "$1" == "test" ]];
    then
-    python -B -u deep_components/run_test3.py \
+    "${python_bin}" -B -u deep_components/run_test3.py \
     --epochs=${epoch} \
     --loss_type=${loss_type} \
     --tau="${tau}" \

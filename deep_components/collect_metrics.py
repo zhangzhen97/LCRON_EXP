@@ -2,6 +2,14 @@ import sys
 import codecs
 
 def parse_metrics(lines):
+    if lines and lines[0].startswith("paper_metrics"):
+        header_parts = lines[0].strip().split("\t")
+        value_parts = lines[1].strip().split("\t") if len(lines) > 1 else []
+        if len(header_parts) == len(value_parts):
+            print("\t".join(header_parts[2:]))
+            print("\t".join(value_parts[2:]))
+        return
+
     metric_names = []
     metric_values = []
 
@@ -36,9 +44,15 @@ def parse_metrics(lines):
 def collect_lines():
     metric_lines = []
     for line in sys.stdin.readlines():
-        if not line.startswith("metric"):
+        if not (line.startswith("metrics") or line.startswith("paper_metrics")):
             continue
         metric_lines.append(line)
+    # New two-stage LCRON evaluation emits a paper_metrics pair. Prefer it
+    # over the legacy per-stage rows so the collector prints exactly the five
+    # columns used by the paper.
+    paper_lines = [line for line in metric_lines if line.startswith("paper_metrics")]
+    if len(paper_lines) >= 2:
+        return paper_lines[:2]
     return metric_lines
 
 def main():

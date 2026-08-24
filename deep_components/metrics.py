@@ -314,7 +314,8 @@ def evaluate(model, data_loader, device, is_debug=False, desc=""):
       logits_concat = np.concatenate(logits_list_cpu, axis=1)
       rank_index_concat = np.concatenate(rank_index_list_cpu, axis=1)
       mask_concat = np.concatenate(mask_list_cpu, axis=1)
-      print("mask_concat=%s,%s"%(mask_concat.shape, mask_concat))
+      if is_debug and iter < 5:
+          print("mask_concat=%s,%s"%(mask_concat.shape, mask_concat))
 
       if iter < 5:
           print("PRE_SHUFFLE. logits_concat=%s, rank_index_concat=%s masks=%s" % (logits_concat[0], rank_index_concat[0], mask_concat[0]))
@@ -332,8 +333,20 @@ def evaluate(model, data_loader, device, is_debug=False, desc=""):
       recall_ls.append(recall)
       kdt_ls.append(kdt)
 
-    print("metrics\t%s\tNDCG@%s@%s\tRECALL@%s@%s\tKDT"%(desc, top_k, support_m, top_k, support_m))
-    print("metrics\t%s\t%.4f\t%s\t%.4f"%(desc, np.asarray(ndcg_ls).mean(), np.asarray(recall_ls).mean(), np.asarray(kdt_ls).mean()))
+    ndcg_value = float(np.asarray(ndcg_ls).mean())
+    recall_value = float(np.asarray(recall_ls).mean())
+    kdt_value = float(np.asarray(kdt_ls).mean())
+    # The paper reports NDCG@10 (the second cutoff is only used by Recall).
+    print("metrics\t%s\tNDCG@%s\tRECALL@%s@%s\tKDT" %
+          (desc, top_k, top_k, support_m))
+    print("metrics\t%s\t%.4f\t%.10f\t%.4f" %
+          (desc, ndcg_value, recall_value, kdt_value))
+    return {
+        "ndcg": ndcg_value,
+        "recall": recall_value,
+        "kdt": kdt_value,
+        "support_m": support_m,
+    }
 
 def two_stage_recall(recall_logits, prerank_logits, rank_index, mask,
                      recall_topk=30, prerank_topk=20, gt_num=10):
@@ -352,7 +365,7 @@ def two_stage_recall(recall_logits, prerank_logits, rank_index, mask,
     set_recall = np.array(set_recall)
     return np.mean(set_recall),set_recall
 
-def evaluate_join(prerank_model, retrival_model, data_loader, device, desc=""):
+def evaluate_join(prerank_model, retrival_model, data_loader, device, desc="", is_debug=False):
     prerank_model.eval()
     retrival_model.eval()
 
@@ -378,19 +391,21 @@ def evaluate_join(prerank_model, retrival_model, data_loader, device, desc=""):
             retr_logits_concat = np.concatenate(retr_logits_list_cpu, axis=1)
             rank_index_concat = np.concatenate(rank_index_list_cpu, axis=1)
             mask_concat = np.concatenate(mask_list_cpu, axis=1)
-            if iter < 5:
+            if is_debug and iter < 5:
                 print("evaluate_join. retr_logits_concat=%s"%retr_logits_concat)
             [retr_logits_concat, pre_logits_concat, rank_index_concat, mask_concat] = shuffle_last_dim([
                                             retr_logits_concat, pre_logits_concat, rank_index_concat, mask_concat])
             recall,set_recall = two_stage_recall(recall_logits=retr_logits_concat, prerank_logits=pre_logits_concat,
                                       rank_index=rank_index_concat, mask=mask_concat)
             recall_ls.append(recall)
-            if iter < 5:
+            if is_debug and iter < 5:
                 print("DEBUG_EVAL[%s] recall_logits=%s prerank_logits=%s rank_index=%s mask=%s, recall=%s" % (
                     "joint", retr_logits_concat[0], pre_logits_concat[0], rank_index_concat[0], mask_concat[0], set_recall[0]))
 
+        recall_value = float(np.asarray(recall_ls).mean())
         print("metrics\t%s\t%s" % (desc, "joint_recall"))
-        print("metrics\t%s\t%.4f" % (desc, np.asarray(recall_ls).mean()))
+        print("metrics\t%s\t%.10f" % (desc, recall_value))
+        return {"joint_recall": recall_value}
 
 def evaluate_join_3stage(rank_model, prerank_model, retrival_model, data_loader, device, desc=""):
     rank_model.eval()
