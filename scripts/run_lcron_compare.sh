@@ -4,6 +4,8 @@
 # Arguments: [variant] [root_path]
 # Variants: baseline, no_down, no_detach, all (default: all)
 # Default seeds: five independent runs, matching the paper; override with LCRON_EXP_SEEDS="...".
+# By default all eight GPUs are used as independent workers; override with
+# LCRON_EXP_GPUS="0 1 2" when some cards are occupied by other jobs.
 
 set -euo pipefail
 
@@ -15,6 +17,7 @@ epochs="${LCRON_EXP_EPOCHS:-30}"
 lr="${LCRON_EXP_LR:-1e-2}"
 batch_size="${LCRON_EXP_BATCH_SIZE:-1024}"
 seeds="${LCRON_EXP_SEEDS:-1024 2024 3407 4099 5113}"
+gpu_list="${LCRON_EXP_GPUS:-0 1 2 3 4 5 6 7}"
 if [ -n "${LCRON_EXP_PYTHON:-}" ]; then
   python_bin="${LCRON_EXP_PYTHON}"
 elif [ -x /share/ad/zq3/lcron/python3_7/bin/python ]; then
@@ -51,33 +54,80 @@ run_variant() {
       --print_freq=100 --tag=lcron-1st > "${run_root}/test.log" 2>&1
 }
 
-run_seeds() {
+task_names=()
+task_down=()
+task_detach=()
+task_seeds=()
+
+add_tasks() {
   local name="$1"
-  local cuda="$2"
-  local use_down_loss="$3"
-  local detach_permutation_matrix="$4"
+  local use_down_loss="$2"
+  local detach_permutation_matrix="$3"
   for seed in ${seeds}; do
-    run_variant "${name}" "${cuda}" "${use_down_loss}" "${detach_permutation_matrix}" "${seed}"
+    task_names+=("${name}")
+    task_down+=("${use_down_loss}")
+    task_detach+=("${detach_permutation_matrix}")
+    task_seeds+=("${seed}")
   done
 }
 
 case "${variant}" in
   baseline)
-    run_seeds baseline "${LCRON_EXP_BASELINE_CUDA:-0}" 1 1
+    add_tasks baseline 1 1
     ;;
   no_down)
-    run_seeds no_down "${LCRON_EXP_ABLATION_CUDA:-1}" 0 1
+    add_tasks no_down 0 1
     ;;
   no_detach)
-    run_seeds no_detach "${LCRON_EXP_ABLATION_CUDA:-1}" 1 0
+    add_tasks no_detach 1 0
     ;;
   all)
-    run_seeds baseline "${LCRON_EXP_BASELINE_CUDA:-0}" 1 1
-    run_seeds no_down "${LCRON_EXP_ABLATION_CUDA:-1}" 0 1
-    run_seeds no_detach "${LCRON_EXP_ABLATION_CUDA:-2}" 1 0
+    add_tasks baseline 1 1
+    add_tasks no_down 0 1
+    add_tasks no_detach 1 0
     ;;
   *)
     echo "usage: $0 [baseline|no_down|no_detach|all] [root_path]" >&2
     exit 2
     ;;
 esac
+
+read -r -a gpus <<< "${gpu_list}"
+if [ "${#gpus[@]}" -eq 0 ]; then
+  echo "[LCRON] no GPUs configured; set LCRON_EXP_GPUS" >&2
+  exit 2
+fi
+
+task_count="${#task_names[@]}"
+worker_count="${#gpus[@]}"
+if [ "${worker_count}" -gt "${task_count}" ]; then
+  worker_count="${task_count}"
+fi
+mkdir -p "${root_path}/logs"
+echo "[LCRON] parallel workers=${worker_count} gpus=${gpu_list} tasks=${task_count}"
+
+worker() {
+  local worker_id="$1"
+  local cuda="$2"
+  local task_idx="${worker_id}"
+  while [ "${task_idx}" -lt "${task_count}" ]; do
+    run_variant "${task_names[task_idx]}" "${cuda}" "${task_down[task_idx]}" \
+      "${task_detach[task_idx]}" "${task_seeds[task_idx]}"
+    task_idx=$((task_idx + worker_count))
+  done
+}
+
+pids=()
+for ((worker_id = 0; worker_id < worker_count; worker_id++)); do
+  worker "${worker_id}" "${gpus[worker_id]}" \
+    > "${root_path}/logs/worker_gpu-${gpus[worker_id]}.log" 2>&1 &
+  pids+=("$!")
+done
+
+failed=0
+for pid in "${pids[@]}"; do
+  if ! wait "${pid}"; then
+    failed=1
+  fi
+done
+exit "${failed}"
