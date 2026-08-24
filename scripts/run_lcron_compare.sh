@@ -13,6 +13,7 @@ tau="${LCRON_EXP_TAU:-50}"
 epochs="${LCRON_EXP_EPOCHS:-30}"
 lr="${LCRON_EXP_LR:-1e-2}"
 batch_size="${LCRON_EXP_BATCH_SIZE:-1024}"
+export PYTHONPATH="${PWD}:${PWD}/deep_components${PYTHONPATH:+:${PYTHONPATH}}"
 
 run_variant() {
   local name="$1"
@@ -29,7 +30,7 @@ run_variant() {
     "${lr}" "${batch_size}" "${use_down_loss}" "${detach_permutation_matrix}"
 
   echo "[LCRON] ${name}: evaluating"
-  CUDA_VISIBLE_DEVICES="${cuda}" PYTHONPATH="${PWD}:${PWD}/deep_components" \
+  CUDA_VISIBLE_DEVICES="${cuda}" \
     python3 -B -u deep_components/run_test2.py \
       --epochs="${epochs}" --loss_type=lcron --tau="${tau}" \
       --batch_size="${batch_size}" --infer_realshow_batch_size="${batch_size}" \
