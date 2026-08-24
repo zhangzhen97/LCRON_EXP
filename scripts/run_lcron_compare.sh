@@ -27,6 +27,15 @@ run_variant() {
   echo "[LCRON] ${name}: cuda=${cuda} use_down_loss=${use_down_loss} detach_permutation_matrix=${detach_permutation_matrix}"
   bash two_stage/run_x2.sh train lcron "${cuda}" "${tau}" "${epochs}" "${run_root}" \
     "${lr}" "${batch_size}" "${use_down_loss}" "${detach_permutation_matrix}"
+
+  echo "[LCRON] ${name}: evaluating"
+  CUDA_VISIBLE_DEVICES="${cuda}" PYTHONPATH="${PWD}:${PWD}/deep_components" \
+    python3 -B -u deep_components/run_test2.py \
+      --epochs="${epochs}" --loss_type=lcron --tau="${tau}" \
+      --batch_size="${batch_size}" --infer_realshow_batch_size="${batch_size}" \
+      --infer_recall_batch_size="${batch_size}" --emb_dim=8 --lr="${lr}" \
+      --seq_len=50 --cuda="${cuda}" --root_path="${run_root}" \
+      --print_freq=100 --tag=lcron-1st > "${run_root}/test.log" 2>&1
 }
 
 case "${variant}" in
