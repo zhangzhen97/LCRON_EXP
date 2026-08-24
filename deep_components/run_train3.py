@@ -2,6 +2,8 @@ import itertools
 import os
 import argparse
 import time
+import random
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
@@ -42,6 +44,7 @@ def parse_args():
                         help='whether LCRON includes down-target losses (1=on, 0=off).')
     parser.add_argument('--lcron_detach_permutation_matrix', type=int, choices=[0, 1], default=1,
                         help='whether LCRON detaches permutation-matrix normalization denominators (1=on, 0=off).')
+    parser.add_argument('--seed', type=int, default=1024, help='random seed for model/data initialization.')
 
     return parser.parse_args()
 
@@ -72,6 +75,11 @@ if __name__ == '__main__':
         args = parse_args()
         for k, v in vars(args).items():
             print(f"{k}:{v}")
+        random.seed(args.seed)
+        np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(args.seed)
 
         # prepare data
         root_path = args.root_path

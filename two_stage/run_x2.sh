@@ -35,6 +35,11 @@ if [ -n "${10}" ]; then
 else
     detach_permutation_matrix=1
 fi
+if [ -n "${11}" ]; then
+    seed=${11}
+else
+    seed=1024
+fi
 
 
 # 输出结果
@@ -44,6 +49,7 @@ echo "lr=${lr}"
 echo "BS=${BS}"
 echo "lcron_use_down_loss=${use_down_loss}"
 echo "lcron_detach_permutation_matrix=${detach_permutation_matrix}"
+echo "seed=${seed}"
 echo "epochs=${epochs}"
 echo "root_path=${root_path}"
 
@@ -70,7 +76,8 @@ for epoch in $epochs; do
     --print_freq=100 \
     --tag=${tag} \
     --lcron_use_down_loss=${use_down_loss} \
-    --lcron_detach_permutation_matrix=${detach_permutation_matrix} > $TRAIN_PATH 2>&1
+    --lcron_detach_permutation_matrix=${detach_permutation_matrix} \
+    --seed=${seed} > $TRAIN_PATH 2>&1
   fi
 
   if [[ "$1" == "all" || "$1" == "test" ]];

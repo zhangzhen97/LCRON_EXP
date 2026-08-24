@@ -17,6 +17,7 @@ files=(
   two_stage/run_x2.sh
   three_stage/run_x3.sh
   scripts/run_lcron_compare.sh
+  scripts/summarize_lcron_runs.py
   scripts/commit_lcron_changes.sh
 )
 
