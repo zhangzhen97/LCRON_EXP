@@ -115,8 +115,12 @@ class JointUltraLoss(LossHelperBase):
         s2_mask = mask_all.unsqueeze(1) * mask_all.unsqueeze(2)
         pre_rank_permutation_matrix_mask = pre_rank_permutation_matrix * s2_mask
         recall_permutation_matrix_mask = recall_permutation_matrix * s2_mask
-        detach_pre_rank_permutation_matrix_mask = pre_rank_permutation_matrix_mask.detach()
-        detach_recall_permutation_matrix_mask = recall_permutation_matrix_mask.detach()
+        if getattr(self.conf, 'detach_permutation_matrix', True):
+            detach_pre_rank_permutation_matrix_mask = pre_rank_permutation_matrix_mask.detach()
+            detach_recall_permutation_matrix_mask = recall_permutation_matrix_mask.detach()
+        else:
+            detach_pre_rank_permutation_matrix_mask = pre_rank_permutation_matrix_mask
+            detach_recall_permutation_matrix_mask = recall_permutation_matrix_mask
         all_label_matrix_mask = all_label_matrix * s2_mask
         joint_recall_k = self.conf.joint_recall_k
         joint_prerank_k = self.conf.joint_prerank_k
@@ -134,17 +138,20 @@ class JointUltraLoss(LossHelperBase):
         up_joint_loss = torch.mean(-torch.log(up_target_joint_permutation_matrix + 1e-6) * up_target_all_label_matrix,
                                    dim=-1)
         
-        down_target_recall_permutation_matrix = torch.sum(recall_permutation_matrix_mask[:, joint_recall_k:, :], dim=-2)
-        down_target_recall_permutation_matrix = down_target_recall_permutation_matrix/(all_detach_target_recall_permutation_matrix+1e-6)
-        down_target_recall_permutation_matrix = 1 -  down_target_recall_permutation_matrix
-        
-        down_target_pre_rank_permutation_matrix = torch.sum(pre_rank_permutation_matrix_mask[:, joint_prerank_k:, :], dim=-2)
-        down_target_pre_rank_permutation_matrix = down_target_pre_rank_permutation_matrix/(all_detach_target_pre_rank_permutation_matrix+1e-6)
-        down_target_pre_rank_permutation_matrix = 1 -  down_target_pre_rank_permutation_matrix
+        if getattr(self.conf, 'use_down_loss', True):
+            down_target_recall_permutation_matrix = torch.sum(recall_permutation_matrix_mask[:, joint_recall_k:, :], dim=-2)
+            down_target_recall_permutation_matrix = down_target_recall_permutation_matrix/(all_detach_target_recall_permutation_matrix+1e-6)
+            down_target_recall_permutation_matrix = 1 -  down_target_recall_permutation_matrix
 
-        down_target_joint_permutation_matrix = down_target_recall_permutation_matrix * down_target_pre_rank_permutation_matrix
-        down_target_all_label_matrix = torch.clamp(1 - up_target_all_label_matrix, min=0, max=1)
-        down_joint_loss = torch.mean(-torch.log((1-down_target_joint_permutation_matrix) + 1e-6) * down_target_all_label_matrix, dim=-1)
+            down_target_pre_rank_permutation_matrix = torch.sum(pre_rank_permutation_matrix_mask[:, joint_prerank_k:, :], dim=-2)
+            down_target_pre_rank_permutation_matrix = down_target_pre_rank_permutation_matrix/(all_detach_target_pre_rank_permutation_matrix+1e-6)
+            down_target_pre_rank_permutation_matrix = 1 -  down_target_pre_rank_permutation_matrix
+
+            down_target_joint_permutation_matrix = down_target_recall_permutation_matrix * down_target_pre_rank_permutation_matrix
+            down_target_all_label_matrix = torch.clamp(1 - up_target_all_label_matrix, min=0, max=1)
+            down_joint_loss = torch.mean(-torch.log((1-down_target_joint_permutation_matrix) + 1e-6) * down_target_all_label_matrix, dim=-1)
+        else:
+            down_joint_loss = torch.zeros_like(up_joint_loss)
         
         joint_loss = up_joint_loss + down_joint_loss
         joint_loss = torch.mean(joint_loss)
@@ -160,7 +167,10 @@ class LsingleLoss(LossHelperBase):
         s2_mask = mask_all.unsqueeze(1) * mask_all.unsqueeze(2)
         permutation_matrix = permutation_matrix * s2_mask
         label_matrix = label_matrix * s2_mask
-        detach_permutation_matrix = permutation_matrix.detach()
+        if getattr(self.conf, 'detach_permutation_matrix', True):
+            detach_permutation_matrix = permutation_matrix.detach()
+        else:
+            detach_permutation_matrix = permutation_matrix
         up_target_permutation_matrix = torch.sum(permutation_matrix[:, :support_m, :], dim=-2)
         raw_sum_permutation_matrix = torch.sum(detach_permutation_matrix, dim=-2)
         up_target_permutation_matrix = up_target_permutation_matrix / (raw_sum_permutation_matrix + 1e-6)
@@ -168,12 +178,15 @@ class LsingleLoss(LossHelperBase):
         up_loss_sample_wise = torch.mean(
             -torch.log(up_target_permutation_matrix + 1e-6) * up_target_label_matrix * self.label_infos['label_mask'],
             dim=-1)
-        down_target_permutation_matrix = torch.sum(permutation_matrix[:, support_m:, :], dim=-2)
-        down_target_permutation_matrix = down_target_permutation_matrix / (raw_sum_permutation_matrix + 1e-6)
-        down_target_label_matrix = torch.sum(label_matrix[:, top_k:, :], dim=-2)
-        down_loss_sample_wise = torch.mean(
-            -torch.log(down_target_permutation_matrix + 1e-6) * down_target_label_matrix * self.label_infos[
-                'label_mask'], dim=-1)
+        if getattr(self.conf, 'use_down_loss', True):
+            down_target_permutation_matrix = torch.sum(permutation_matrix[:, support_m:, :], dim=-2)
+            down_target_permutation_matrix = down_target_permutation_matrix / (raw_sum_permutation_matrix + 1e-6)
+            down_target_label_matrix = torch.sum(label_matrix[:, top_k:, :], dim=-2)
+            down_loss_sample_wise = torch.mean(
+                -torch.log(down_target_permutation_matrix + 1e-6) * down_target_label_matrix * self.label_infos[
+                    'label_mask'], dim=-1)
+        else:
+            down_loss_sample_wise = torch.zeros_like(up_loss_sample_wise)
         loss_sample_wise = up_loss_sample_wise + down_loss_sample_wise
         loss_sample_wise = loss_sample_wise * (self.label_infos['count'] > support_m).float()
         if hasattr(self.conf, 'sample_weight'):
@@ -200,7 +213,9 @@ class LCRON(LossHelperBase):
                                                     loss_conf=type("", (), {
                                                         "model_name": self.conf.prerank_model_name,
                                                         "top_k": self.conf.gt_num,
-                                                        "support_m": self.conf.gt_num}),
+                                                        "support_m": self.conf.gt_num,
+                                                        "use_down_loss": getattr(self.conf, 'use_down_loss', True),
+                                                        "detach_permutation_matrix": getattr(self.conf, 'detach_permutation_matrix', True)}),
                                                     logger=logger,
                                                     use_name_as_scope=use_name_as_scope,
                                                     is_debug=is_debug,
@@ -212,7 +227,9 @@ class LCRON(LossHelperBase):
                                                     loss_conf=type("", (), {
                                                         "model_name": self.conf.recall_model_name,
                                                         "top_k": self.conf.gt_num,
-                                                        "support_m": self.conf.gt_num}),
+                                                        "support_m": self.conf.gt_num,
+                                                        "use_down_loss": getattr(self.conf, 'use_down_loss', True),
+                                                        "detach_permutation_matrix": getattr(self.conf, 'detach_permutation_matrix', True)}),
                                                     logger=logger,
                                                     use_name_as_scope=use_name_as_scope,
                                                     is_debug=is_debug,
@@ -223,7 +240,9 @@ class LCRON(LossHelperBase):
                             "joint_recall_k": self.conf.gt_num,
                             "joint_prerank_k": self.conf.gt_num,
                             "gt_num": self.conf.gt_num,
-                            "global_size": self.conf.global_size})
+                            "global_size": self.conf.global_size,
+                            "use_down_loss": getattr(self.conf, 'use_down_loss', True),
+                            "detach_permutation_matrix": getattr(self.conf, 'detach_permutation_matrix', True)})
         self.joint_loss_helper = JointUltraLoss(name=self.name + '/L_joint',
                                                 label_infos=label_infos,
                                                 model_outputs=model_outputs,

@@ -25,6 +25,16 @@ if [ -n "$8" ]; then
 else
     BS=1024
 fi
+if [ -n "$9" ]; then
+    use_down_loss=$9
+else
+    use_down_loss=1
+fi
+if [ -n "${10}" ]; then
+    detach_permutation_matrix=${10}
+else
+    detach_permutation_matrix=1
+fi
 
 
 # 输出结果
@@ -32,6 +42,8 @@ echo "tau=${tau}"
 echo "epochs=${epochs}"
 echo "lr=${lr}"
 echo "BS=${BS}"
+echo "lcron_use_down_loss=${use_down_loss}"
+echo "lcron_detach_permutation_matrix=${detach_permutation_matrix}"
 echo "epochs=${epochs}"
 echo "root_path=${root_path}"
 
@@ -56,7 +68,9 @@ for epoch in $epochs; do
     --cuda=${cuda} \
     --root_path=${root_path} \
     --print_freq=100 \
-    --tag=${tag} > $TRAIN_PATH 2>&1
+    --tag=${tag} \
+    --lcron_use_down_loss=${use_down_loss} \
+    --lcron_detach_permutation_matrix=${detach_permutation_matrix} > $TRAIN_PATH 2>&1
   fi
 
   if [[ "$1" == "all" || "$1" == "test" ]];

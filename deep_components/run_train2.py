@@ -32,7 +32,9 @@ joint_loss_conf = type("", (), {"prerank_model_name": 'joint/prerank_model',
                                 "joint_recall_k": 30,
                                 "joint_prerank_k": 20,
                                 "gt_num": 10,
-                                "global_size": max_num})
+                                "global_size": max_num,
+                                "use_down_loss": True,
+                                "detach_permutation_matrix": True})
 
 # conf for ARF:
 prerank_arf_loss_conf = type("", (), {
@@ -69,6 +71,10 @@ def parse_args():
     parser.add_argument('--root_path', type=str, default=".", help='root path to data, checkpoints and logs')
     parser.add_argument('--tau', type=float, default=1, help='tau.')
     parser.add_argument('--loss_type', type=str, default="fsltr", help='method type.')
+    parser.add_argument('--lcron_use_down_loss', type=int, choices=[0, 1], default=1,
+                        help='whether LCRON includes down-target losses (1=on, 0=off).')
+    parser.add_argument('--lcron_detach_permutation_matrix', type=int, choices=[0, 1], default=1,
+                        help='whether LCRON detaches permutation-matrix normalization denominators (1=on, 0=off).')
 
     return parser.parse_args()
 
@@ -99,6 +105,8 @@ if __name__ == '__main__':
         args = parse_args()
         for k, v in vars(args).items():
             print(f"{k}:{v}")
+        joint_loss_conf.use_down_loss = bool(args.lcron_use_down_loss)
+        joint_loss_conf.detach_permutation_matrix = bool(args.lcron_detach_permutation_matrix)
 
         # prepare data
         root_path = args.root_path
