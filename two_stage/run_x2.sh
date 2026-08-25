@@ -41,6 +41,11 @@ if [ -n "${11}" ]; then
 else
     seed=1024
 fi
+if [ -n "${12}" ]; then
+    lcron_topk_recall_tau_scale=${12}
+else
+    lcron_topk_recall_tau_scale=1.0
+fi
 
 
 # 输出结果
@@ -51,6 +56,7 @@ echo "BS=${BS}"
 echo "lcron_use_down_loss=${use_down_loss}"
 echo "lcron_detach_permutation_matrix=${detach_permutation_matrix}"
 echo "seed=${seed}"
+echo "lcron_topk_recall_tau_scale=${lcron_topk_recall_tau_scale}"
 echo "epochs=${epochs}"
 echo "root_path=${root_path}"
 
@@ -78,6 +84,7 @@ for epoch in $epochs; do
     --tag=${tag} \
     --lcron_use_down_loss=${use_down_loss} \
     --lcron_detach_permutation_matrix=${detach_permutation_matrix} \
+    --lcron_topk_recall_tau_scale=${lcron_topk_recall_tau_scale} \
     --seed=${seed} > $TRAIN_PATH 2>&1
   fi
 

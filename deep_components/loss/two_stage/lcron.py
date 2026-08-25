@@ -36,7 +36,7 @@ def get_set_value_by_permutation_matrix_and_label(permutation_matrix, label, top
 
 def compute_lcron_metrics(inputs, prerank_logits, retrival_logits, device, loss_model, max_num,
                           joint_loss_conf, logger, tau=50, sort="neural_sort", debug=False,
-                          cascade_topk=False):
+                          cascade_topk=False, cascade_recall_tau_scale=1.0):
     rank_index_list = [tensor.to(device) for tensor in inputs[-4:]]
     mask_list = [tensor.to(device) for tensor in inputs[-8:-4]]
 
@@ -89,6 +89,7 @@ def compute_lcron_metrics(inputs, prerank_logits, retrival_logits, device, loss_
     }
     joint_loss_conf.cascade_topk = cascade_topk
     joint_loss_conf.tau = tau
+    joint_loss_conf.cascade_recall_tau_scale = cascade_recall_tau_scale
     loss_instance = LCRON(name='joint/cascade_model', label_infos=label_infos,
                           model_outputs=model_outputs_dict,
                           loss_conf=joint_loss_conf,
@@ -176,8 +177,6 @@ class CascadeTopKLoss(LossHelperBase):
     """
 
     def loss_graph(self):
-        recall_permutation_matrix = self.model_outputs[self.conf.recall_model_name][
-            'logits_permutation_matrix']
         recall_logits = self.model_outputs[self.conf.recall_model_name]['logits']
         prerank_logits = self.model_outputs[self.conf.prerank_model_name]['logits']
         label_matrix = self.label_infos['label_permutation_matrix']
@@ -189,6 +188,10 @@ class CascadeTopKLoss(LossHelperBase):
         # does not change the NeuralSort ordering and preserves the requested
         # "sum of top-k rows" operator.
         s2_mask = mask_all.unsqueeze(1) * mask_all.unsqueeze(2)
+        # Keep the ordinary Lsingle recall path untouched.  This operator has
+        # its own temperature so the tau sweep changes only L_cascade_topk.
+        recall_permutation_matrix = neuralsort(
+            recall_logits, self.conf.tau * self.conf.recall_tau_scale)
         recall_permutation_matrix = recall_permutation_matrix * s2_mask
         recall_topk = torch.sum(
             recall_permutation_matrix[:, :self.conf.joint_recall_k, :], dim=-2)
@@ -318,6 +321,7 @@ class LCRON(LossHelperBase):
                 "joint_prerank_k": self.conf.joint_prerank_k,
                 "gt_num": self.conf.gt_num,
                 "tau": getattr(self.conf, 'tau', 50),
+                "recall_tau_scale": getattr(self.conf, 'cascade_recall_tau_scale', 1.0),
             })
             self.cascade_topk_helper = CascadeTopKLoss(
                 name=self.name + '/L_cascade_topk',

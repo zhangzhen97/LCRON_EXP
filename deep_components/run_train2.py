@@ -77,6 +77,8 @@ def parse_args():
                         help='whether LCRON includes down-target losses (1=on, 0=off).')
     parser.add_argument('--lcron_detach_permutation_matrix', type=int, choices=[0, 1], default=1,
                         help='whether LCRON detaches permutation-matrix normalization denominators (1=on, 0=off).')
+    parser.add_argument('--lcron_topk_recall_tau_scale', type=float, default=1.0,
+                        help='temperature multiplier used only by L_cascade_topk recall NeuralSort.')
     parser.add_argument('--seed', type=int, default=1024, help='random seed for model/data initialization.')
     parser.add_argument('--num_workers', type=int, default=2,
                         help='number of DataLoader workers (0 disables prefetching).')
@@ -370,7 +372,8 @@ if __name__ == '__main__':
                                                         logger=logger,
                                                         loss_model=loss_model,
                                                         sort='neural_sort',
-                                                        cascade_topk=args.loss_type in ('lcron_topk', 'lcron_cascade_topk'))
+                                                        cascade_topk=args.loss_type in ('lcron_topk', 'lcron_cascade_topk'),
+                                                        cascade_recall_tau_scale=args.lcron_topk_recall_tau_scale)
                         loss = outputs["total_loss"]
                         prerank_optimizer.zero_grad()
                         retrival_optimizer.zero_grad()
