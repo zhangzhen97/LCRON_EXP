@@ -41,8 +41,11 @@ run_variant() {
   ln -sfn "${data_path}" "${run_root}/data"
 
   echo "[LCRON] ${name}: seed=${seed} cuda=${cuda} use_down_loss=${use_down_loss} detach_permutation_matrix=${detach_permutation_matrix}"
-  bash two_stage/run_x2.sh train lcron "${cuda}" "${tau}" "${epochs}" "${run_root}" \
-    "${lr}" "${batch_size}" "${use_down_loss}" "${detach_permutation_matrix}" "${seed}"
+  # Bind the process before Python/Torch is imported. Passing --cuda alone is
+  # insufficient because run_train2.py selects cuda:0 after parsing args.
+  CUDA_VISIBLE_DEVICES="${cuda}" \
+    bash two_stage/run_x2.sh train lcron "${cuda}" "${tau}" "${epochs}" "${run_root}" \
+      "${lr}" "${batch_size}" "${use_down_loss}" "${detach_permutation_matrix}" "${seed}"
 
   echo "[LCRON] ${name}: evaluating"
   CUDA_VISIBLE_DEVICES="${cuda}" \
