@@ -35,7 +35,8 @@ def get_set_value_by_permutation_matrix_and_label(permutation_matrix, label, top
 
 
 def compute_lcron_metrics(inputs, prerank_logits, retrival_logits, device, loss_model, max_num,
-                          joint_loss_conf, logger, tau=50, sort="neural_sort", debug=False):
+                          joint_loss_conf, logger, tau=50, sort="neural_sort", debug=False,
+                          cascade_topk=False):
     rank_index_list = [tensor.to(device) for tensor in inputs[-4:]]
     mask_list = [tensor.to(device) for tensor in inputs[-8:-4]]
 
@@ -86,6 +87,8 @@ def compute_lcron_metrics(inputs, prerank_logits, retrival_logits, device, loss_
             "logits": retrival_sorted_logits
         }
     }
+    joint_loss_conf.cascade_topk = cascade_topk
+    joint_loss_conf.tau = tau
     loss_instance = LCRON(name='joint/cascade_model', label_infos=label_infos,
                           model_outputs=model_outputs_dict,
                           loss_conf=joint_loss_conf,
@@ -160,6 +163,57 @@ class JointUltraLoss(LossHelperBase):
         joint_loss = up_joint_loss + down_joint_loss
         joint_loss = torch.mean(joint_loss)
         self.loss_output_dict[self.name] = joint_loss
+
+
+class CascadeTopKLoss(LossHelperBase):
+    """Differentiable cascade top-k loss for the two-stage models.
+
+    The top-k operator is the sum of the first k rows of a NeuralSort
+    permutation matrix.  Recall scores are converted to a soft top-k
+    membership vector, used to gate the coarse-rank logits, and sorted again
+    to obtain the final top-k membership vector.  Both vectors are normalized
+    over valid candidates before the same elementwise log-loss used by LCRON.
+    """
+
+    def loss_graph(self):
+        recall_permutation_matrix = self.model_outputs[self.conf.recall_model_name][
+            'logits_permutation_matrix']
+        recall_logits = self.model_outputs[self.conf.recall_model_name]['logits']
+        prerank_logits = self.model_outputs[self.conf.prerank_model_name]['logits']
+        label_matrix = self.label_infos['label_permutation_matrix']
+        mask_all = self.label_infos['label_mask']
+
+        # Mask both rows and columns so padded candidates cannot contribute to
+        # either top-k operator.  The row sums are intentionally not divided
+        # by k here: multiplying all scores in one sample by a common scalar
+        # does not change the NeuralSort ordering and preserves the requested
+        # "sum of top-k rows" operator.
+        s2_mask = mask_all.unsqueeze(1) * mask_all.unsqueeze(2)
+        recall_permutation_matrix = recall_permutation_matrix * s2_mask
+        recall_topk = torch.sum(
+            recall_permutation_matrix[:, :self.conf.joint_recall_k, :], dim=-2)
+
+        # Sequential cascade: recall top-k membership gates the coarse-rank
+        # logits, then the gated scores are passed through a second NeuralSort.
+        cascade_logits = recall_topk * prerank_logits
+        cascade_permutation_matrix = neuralsort(cascade_logits, self.conf.tau)
+        cascade_permutation_matrix = cascade_permutation_matrix * s2_mask
+        final_topk = torch.sum(
+            cascade_permutation_matrix[:, :self.conf.joint_prerank_k, :], dim=-2)
+        final_topk = final_topk * mask_all
+        final_topk = final_topk / (torch.sum(final_topk, dim=-1, keepdim=True) + 1e-6)
+
+        target_topk = torch.sum(
+            (label_matrix * s2_mask)[:, :self.conf.gt_num, :], dim=-2)
+        target_topk = target_topk * mask_all
+        target_topk = target_topk / (torch.sum(target_topk, dim=-1, keepdim=True) + 1e-6)
+
+        loss_sample_wise = torch.sum(
+            -target_topk * torch.log(final_topk + 1e-6), dim=-1)
+        loss_sample_wise = loss_sample_wise * (
+            self.label_infos['count'] >= self.conf.gt_num).float()
+        loss = torch.mean(loss_sample_wise)
+        self.loss_output_dict[self.name] = loss
 
 class LsingleLoss(LossHelperBase):
     def loss_graph(self):
@@ -256,10 +310,34 @@ class LCRON(LossHelperBase):
                                                 is_debug=is_debug,
                                                 is_train=is_train)
 
+        if getattr(self.conf, 'cascade_topk', False):
+            cascade_conf = type("", (), {
+                "recall_model_name": self.conf.recall_model_name,
+                "prerank_model_name": self.conf.prerank_model_name,
+                "joint_recall_k": self.conf.joint_recall_k,
+                "joint_prerank_k": self.conf.joint_prerank_k,
+                "gt_num": self.conf.gt_num,
+                "tau": getattr(self.conf, 'tau', 50),
+            })
+            self.cascade_topk_helper = CascadeTopKLoss(
+                name=self.name + '/L_cascade_topk',
+                label_infos=label_infos,
+                model_outputs=model_outputs,
+                loss_conf=cascade_conf,
+                logger=logger,
+                use_name_as_scope=use_name_as_scope,
+                is_debug=is_debug,
+                is_train=is_train)
+        else:
+            self.cascade_topk_helper = None
+
     def loss_graph(self):
         l_relax_prerank = self.l_relax_helper_prerank.get_loss(self.l_relax_helper_prerank.name)
         l_relax_recall = self.l_relax_helper_recall.get_loss(self.l_relax_helper_recall.name)
-        l_joint = self.joint_loss_helper.get_loss(self.joint_loss_helper.name)
+        if self.cascade_topk_helper is not None:
+            l_joint = self.cascade_topk_helper.get_loss(self.cascade_topk_helper.name)
+        else:
+            l_joint = self.joint_loss_helper.get_loss(self.joint_loss_helper.name)
         final_loss = self.loss_model.forward(l_relax_prerank, l_relax_recall, l_joint)
         self.loss_output_dict['l_relax_recall'] = l_relax_recall
         self.loss_output_dict['l_relax_prerank'] = l_relax_prerank

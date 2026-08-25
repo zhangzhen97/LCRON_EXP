@@ -19,7 +19,7 @@ REMOTE_URL = (
     "https://kml.corp.kuaishou.com/#/system/project/10049/"
     "machine-terminal/100000920?fullScreen=1&originPid=10049&provider=Ailurus"
 )
-VARIANTS = ("baseline", "no_down", "no_detach")
+DEFAULT_VARIANTS = ("baseline", "no_down", "no_detach")
 METRIC_NAMES = (
     "Joint/Recall@10@20",
     "Ranking/Recall@10@20",
@@ -59,15 +59,15 @@ def completion_status(root: str) -> tuple[int, int]:
     return int(fields.get("active", "-1")), int(fields.get("metrics", "-1"))
 
 
-def markdown_from_summary(summary: str, root: str) -> str:
+def markdown_from_summary(summary: str, root: str, variants: tuple[str, ...]) -> str:
     rows = {}
     for line in summary.splitlines():
         fields = line.split("\t")
-        if len(fields) == 7 and fields[1] == "mean±std" and fields[0] in VARIANTS:
+        if len(fields) == 7 and fields[1] == "mean±std" and fields[0] in variants:
             rows[fields[0]] = fields[2:]
 
-    if set(rows) != set(VARIANTS):
-        raise RuntimeError("summary does not contain all three variant mean±std rows")
+    if set(rows) != set(variants):
+        raise RuntimeError("summary does not contain all requested variant mean±std rows")
 
     parts = [
         "# LCRON 实验结果", "",
@@ -75,7 +75,7 @@ def markdown_from_summary(summary: str, root: str) -> str:
         "- 配置：优化版 loss、5 个 seed、8 卡并行",
         "- 指标：论文五列，均为 mean ± std", "",
     ]
-    for variant in VARIANTS:
+    for variant in variants:
         parts.extend([f"## {variant}", ""])
         for name, value in zip(METRIC_NAMES, rows[variant]):
             parts.append(f"- **{name}**：{value}")
@@ -90,7 +90,15 @@ def main() -> int:
     parser.add_argument("--expected", type=int, default=15)
     parser.add_argument("--interval", type=int, default=300)
     parser.add_argument("--state", default="/tmp/lcron_exp_notify.sent")
+    parser.add_argument(
+        "--variants",
+        default=",".join(DEFAULT_VARIANTS),
+        help="comma-separated variant names expected in the summary",
+    )
     args = parser.parse_args()
+    variants = tuple(item.strip() for item in args.variants.split(",") if item.strip())
+    if not variants:
+        parser.error("--variants must contain at least one variant")
 
     state = Path(args.state)
     if state.exists():
@@ -106,7 +114,7 @@ def main() -> int:
                     "cd /home/zhangzhen24/experiments/LCRON_EXP && "
                     f"python3 scripts/summarize_lcron_runs.py {args.root}"
                 )
-                message = markdown_from_summary(summary, args.root)
+                message = markdown_from_summary(summary, args.root, variants)
                 result = send_webhook(
                     message,
                     webhook_name="lcron-exp",

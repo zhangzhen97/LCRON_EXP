@@ -2,7 +2,7 @@
 
 # Run two-stage LCRON comparisons with fixed data/model hyperparameters on the development machine.
 # Arguments: [variant] [root_path]
-# Variants: baseline, no_down, no_detach, all (default: all)
+# Variants: baseline, no_down, no_detach, cascade_topk, all (default: all)
 # Default seeds: five independent runs, matching the paper; override with LCRON_EXP_SEEDS="...".
 # By default all eight GPUs are used as independent workers; override with
 # LCRON_EXP_GPUS="0 1 2" when some cards are occupied by other jobs.
@@ -35,62 +35,69 @@ run_variant() {
   local use_down_loss="$3"
   local detach_permutation_matrix="$4"
   local seed="$5"
+  local loss_type="$6"
   local run_root="${root_path}/seed_${seed}/${name}"
 
   mkdir -p "${run_root}/logs" "${run_root}/checkpoints"
   ln -sfn "${data_path}" "${run_root}/data"
 
-  echo "[LCRON] ${name}: seed=${seed} cuda=${cuda} use_down_loss=${use_down_loss} detach_permutation_matrix=${detach_permutation_matrix}"
+  echo "[LCRON] ${name}: loss=${loss_type} seed=${seed} cuda=${cuda} use_down_loss=${use_down_loss} detach_permutation_matrix=${detach_permutation_matrix}"
   # Bind the process before Python/Torch is imported. Passing --cuda alone is
   # insufficient because run_train2.py selects cuda:0 after parsing args.
   CUDA_VISIBLE_DEVICES="${cuda}" \
-    bash two_stage/run_x2.sh train lcron "${cuda}" "${tau}" "${epochs}" "${run_root}" \
+    bash two_stage/run_x2.sh train "${loss_type}" "${cuda}" "${tau}" "${epochs}" "${run_root}" \
       "${lr}" "${batch_size}" "${use_down_loss}" "${detach_permutation_matrix}" "${seed}"
 
   echo "[LCRON] ${name}: evaluating"
   CUDA_VISIBLE_DEVICES="${cuda}" \
     "${python_bin}" -B -u deep_components/run_test2.py \
-      --epochs="${epochs}" --loss_type=lcron --tau="${tau}" \
+      --epochs="${epochs}" --loss_type="${loss_type}" --tau="${tau}" \
       --batch_size="${batch_size}" --infer_realshow_batch_size="${batch_size}" \
       --infer_recall_batch_size="${batch_size}" --emb_dim=8 --lr="${lr}" \
       --seq_len=50 --cuda="${cuda}" --root_path="${run_root}" \
-      --print_freq=100 --tag=lcron-1st > "${run_root}/test.log" 2>&1
+      --print_freq=100 --tag="${loss_type}-1st" > "${run_root}/test.log" 2>&1
 }
 
 task_names=()
 task_down=()
 task_detach=()
 task_seeds=()
+task_loss=()
 
 add_tasks() {
   local name="$1"
   local use_down_loss="$2"
   local detach_permutation_matrix="$3"
+  local loss_type="$4"
   for seed in ${seeds}; do
     task_names+=("${name}")
     task_down+=("${use_down_loss}")
     task_detach+=("${detach_permutation_matrix}")
     task_seeds+=("${seed}")
+    task_loss+=("${loss_type}")
   done
 }
 
 case "${variant}" in
   baseline)
-    add_tasks baseline 1 1
+    add_tasks baseline 1 1 lcron
     ;;
   no_down)
-    add_tasks no_down 0 1
+    add_tasks no_down 0 1 lcron
     ;;
   no_detach)
-    add_tasks no_detach 1 0
+    add_tasks no_detach 1 0 lcron
+    ;;
+  cascade_topk)
+    add_tasks cascade_topk 1 1 lcron_topk
     ;;
   all)
-    add_tasks baseline 1 1
-    add_tasks no_down 0 1
-    add_tasks no_detach 1 0
+    add_tasks baseline 1 1 lcron
+    add_tasks no_down 0 1 lcron
+    add_tasks no_detach 1 0 lcron
     ;;
   *)
-    echo "usage: $0 [baseline|no_down|no_detach|all] [root_path]" >&2
+    echo "usage: $0 [baseline|no_down|no_detach|cascade_topk|all] [root_path]" >&2
     exit 2
     ;;
 esac
@@ -115,7 +122,7 @@ worker() {
   local task_idx="${worker_id}"
   while [ "${task_idx}" -lt "${task_count}" ]; do
     run_variant "${task_names[task_idx]}" "${cuda}" "${task_down[task_idx]}" \
-      "${task_detach[task_idx]}" "${task_seeds[task_idx]}"
+      "${task_detach[task_idx]}" "${task_seeds[task_idx]}" "${task_loss[task_idx]}"
     task_idx=$((task_idx + worker_count))
   done
 }

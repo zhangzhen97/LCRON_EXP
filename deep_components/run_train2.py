@@ -369,7 +369,8 @@ if __name__ == '__main__':
                                                         joint_loss_conf=joint_loss_conf,
                                                         logger=logger,
                                                         loss_model=loss_model,
-                                                        sort='neural_sort')
+                                                        sort='neural_sort',
+                                                        cascade_topk=args.loss_type in ('lcron_topk', 'lcron_cascade_topk'))
                         loss = outputs["total_loss"]
                         prerank_optimizer.zero_grad()
                         retrival_optimizer.zero_grad()
